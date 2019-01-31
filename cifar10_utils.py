@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+"""
+The code is mostly a densed version of the pytorch cifar 10 tutorial here https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html#sphx-glr-download-beginner-blitz-cifar10-tutorial-py
+"""
+
 import torch
 import torchvision
 import torchvision.transforms as transforms
