@@ -1,3 +1,5 @@
 cifar10net
 data
 .ipynb_checkpoints
+__pycache__
+.gitignore~
