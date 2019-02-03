@@ -16,8 +16,8 @@ Notebooks I wrote to get familiar with pytorch, and where I try to implement LRP
     - A `Layer` and a `LayerizedNet` class that convert existing models to layerized versions. The layer types have to be implemented for the specific use case.
   - `lrp.py` <- `layerized_net.py` Layers and a network class that support deep taylor decomposition and LRP gamma.
 - Notebooks
--  `save_load_example.ipynb` is a minimal demo of how to use the net. It trains, saves and loads the net.
--  `lrp-gamma.ipynb` <- `layerized_net.py`, `cifar10_utils.py` Implementation and a few tests with [deep taylor decomposition](arxiv.org/pdf/1512.02479.pdf) and lrp-gamma on cifar10. Here is where `lrp.py` comes from
--  `mnist_deeptaylor.ipynb` <- `lrp.py` MNIST classifier and DTD usage, example how to use `lrp.py`
--  `cifar10_adversarial_examples.ipynb` generates adversarial examples. They have been introduced [here](arxiv.org/abs/1312.6199)
--  `gradient_times_input.ipynb` <- `trainable_net.py`, `cifar10_utils.py` Example with cifar10
+  -  `save_load_example.ipynb` is a minimal demo of how to use the net. It trains, saves and loads the net.
+  -  `lrp-gamma.ipynb` <- `layerized_net.py`, `cifar10_utils.py` Implementation and a few tests with [deep taylor decomposition](arxiv.org/pdf/1512.02479.pdf) and lrp-gamma on cifar10. Here is where `lrp.py` comes from
+  -  `mnist_deeptaylor.ipynb` <- `lrp.py` MNIST classifier and DTD usage, example how to use `lrp.py`
+  -  `cifar10_adversarial_examples.ipynb` generates adversarial examples. They have been introduced [here](arxiv.org/abs/1312.6199)
+  -  `gradient_times_input.ipynb` <- `trainable_net.py`, `cifar10_utils.py` Example with cifar10
