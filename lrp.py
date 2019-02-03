@@ -256,4 +256,4 @@ class ExplainableModel(LayerizedNet):
         if debug:    
             self.debug_info(self.layers[0], R, R_total)
                 
-        return R
+        return R 
