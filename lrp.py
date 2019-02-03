@@ -2,20 +2,17 @@ import torch.nn.functional as F
 from torch import nn
 import numpy as np
 import copy
-from trainable_net import TrainableNet
+from layerized_net import Layer, LayerizedNet
+
 
 na = None
 
 
-class ExplainableLayer():
+class ExplainableLayer(Layer):
     """
     Base class for all layers that support deeptaylor
     """
-    @classmethod
-    def from_module(cls, src):
-        layer = copy.deepcopy(src)
-        layer.__class__ = cls
-        return layer
+    pass
 
 
 class ReluLayer(ExplainableLayer, nn.Module):
@@ -180,7 +177,7 @@ class MaxPool(ReluLayer, nn.MaxPool2d):
                       )
     
     
-class ExplainableModel(TrainableNet):
+class ExplainableModel(LayerizedNet):
     """
     Base class for networks that implement deep taylor decomposition.
     Network architecture is not specified here
@@ -197,21 +194,8 @@ class ExplainableModel(TrainableNet):
         min_x, max_x: box constraints of the input domain, zB rule will be used there
             if not set, ww rule will be used in the first layer
         """
-        super().__init__()
-        self.layers = layers
+        super().__init__(layers)
         self.min_x, self.max_x = min_x, max_x
-        
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer.forward(x)
-        return x
-    
-    def layer_shapes(self, x):
-        print(x.shape)
-        for layer in self.layers:
-            x = layer.forward(x)
-            print(f"({layer.__class__.__name__}) ->", x.shape)
-        return x
     
     def debug_info(self, layer, R, R_total):
         print(f"({layer.__class__.__name__}) ->", R.shape)
@@ -272,48 +256,4 @@ class ExplainableModel(TrainableNet):
         if debug:    
             self.debug_info(self.layers[0], R, R_total)
                 
-        return R 
-    
-    @classmethod
-    def from_model(cls, model, layer_names, *args, **kwargs):
-        """
-        model: nn.Module
-        layer_names: list[string] contains the property names of the mappings that define the network
-        eg: if model.forward does this:
-            x = self.pool(F.relu(self.conv1(x)))
-            x = self.pool(F.relu(self.conv2(x)))
-            x = x.view(-1, 16 * 5 * 5)
-            x = F.relu(self.fc1(x))
-            x = F.relu(self.fc2(x))
-            x = self.fc3(x)
-        layer_names should look like this:
-        ['conv1', 'pool', 'conv2', 'pool', 'fc1', 'fc2', 'fc3']
-        
-        Relus don't have to be specified:
-            assumes that relus are used everywhere but in the last layer
-            assumes the last layer is linear
-        Reshaping does not have to be specified
-        
-        Relies on the fact that each ReluLayer is also subclass of the class of model
-        """
-        def casted_layer(src, last_layer=False):
-            # finds the Explainable equivalent of src.__class__
-            if last_layer:
-                return Linear.from_module(src)
-            for layer_type in ReluLayer.__subclasses__():
-                if issubclass(layer_type, src.__class__):
-                    return layer_type.from_module(src)
-        
-        # cast all layers
-        # all but the last are casted to relu layers
-        layers = [casted_layer(model._modules[l]) for l in layer_names[:-1]] + \
-                 [casted_layer(model._modules[layer_names[-1]], last_layer=True)]
-        
-        # now create a ExplainBase object which we call self, and pretend to be a constructor
-        self = cls(layers, *args, **kwargs)
-        # add the layers to the properties of self, in hope that 
-        # pytorch transforms it to a self._modules element
-        for l, layer in zip(layer_names, layers):
-            self.__dict__[l] = layer
-            
-        return self
+        return R
