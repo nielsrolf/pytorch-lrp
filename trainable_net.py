@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 
+
 class TrainableNet(nn.Module):
     def train(self, epochs, trainloader):
         net = self
