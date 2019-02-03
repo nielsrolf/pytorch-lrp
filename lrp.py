@@ -52,7 +52,19 @@ class Linear(ExplainableLayer, nn.Linear):
         w_minus = -F.relu(-self.weight)
         norm = self.z - l*F.linear(self.x, w_plus) - h*F.linear(self.x, w_minus)
         R_norm = R/norm
-        return F.linear(R_norm, self.weight.transpose(0, 1))              - l*F.linear(R_norm, self.w_plus.transpose(0, 1))             - h*F.linear(R_norm, self.w_minus.transpose(0, 1))
+        return F.linear(R_norm, self.weight.transpose(0, 1))  \
+            - l*F.linear(R_norm, self.w_plus.transpose(0, 1)) \
+            - h*F.linear(R_norm, self.w_minus.transpose(0, 1))
+    
+    def lrp_gamma(self, R, gamma, bias_relevance=False):
+        def leaky_relu(a):
+            return F.relu(a) - gamma*F.relu(-a)
+        w = leaky_relu(self.weight)
+        b = leaky_relu(self.bias) if bias_relevance else None
+        z = F.linear(self.x, w, b)
+        R_norm = R/z
+        return F.linear(R_norm, w.transpose(0, 1))*self.x
+    
 
 
 class LinearRelu(ReluLayer, Linear):
@@ -88,9 +100,39 @@ class ConvRelu(ReluLayer, nn.Conv2d):
         w_minus = -F.relu(-self.weight)
         l = self.x*0 + l
         h = self.x*0 + h
-        norm = F.conv2d(self.x, self.weight, **self.conv_args)             - F.conv2d(l, w_plus, **self.conv_args)             - F.conv2d(h, w_minus, **self.conv_args)
+        norm = F.conv2d(self.x, self.weight, **self.conv_args) \
+            - F.conv2d(l, w_plus, **self.conv_args) \
+            - F.conv2d(h, w_minus, **self.conv_args)
         R_norm = R/norm
-        return self.x*F.conv_transpose2d(R_norm, self.weight, **self.conv_args)              - l*F.conv_transpose2d(R_norm, w_plus, **self.conv_args)             - h*F.conv_transpose2d(R_norm, w_minus, **self.conv_args)
+        return self.x*F.conv_transpose2d(R_norm, self.weight, **self.conv_args)  \
+            - l*F.conv_transpose2d(R_norm, w_plus, **self.conv_args) \
+            - h*F.conv_transpose2d(R_norm, w_minus, **self.conv_args)
+    
+    def lrp_gamma(self, R, gamma, bias_relevance=False):
+        def leaky_relu(a):
+            return F.relu(a) - gamma*F.relu(-a)
+        w = leaky_relu(self.weight)
+        b = leaky_relu(self.bias) if bias_relevance else None
+        z = F.conv2d(self.x, w, b, **self.conv_args)
+        R_norm = R/z
+        return F.conv_transpose2d(R_norm, w, **self.conv_args)*self.x
+    
+    def zb_gamma(self, R, l, h, gamma=0.9, bias_relevance=False):
+        # I am not sure if the first layer's rule should be
+        # the normal zB rule, but this is an interpolation of
+        # the zB rule and input*gradient
+        
+        w_plus  = F.relu(self.weight)
+        w_minus = -F.relu(-self.weight)
+        l = self.x*0 + l
+        h = self.x*0 + h
+        norm = F.conv2d(self.x, self.weight, **self.conv_args) \
+            - F.conv2d(l, w_plus, **self.conv_args)*(1-gamma) \
+            - F.conv2d(h, w_minus, **self.conv_args)*(1-gamma)
+        R_norm = R/norm
+        return self.x*F.conv_transpose2d(R_norm, self.weight, **self.conv_args) \
+            - l*F.conv_transpose2d(R_norm, w_plus, **self.conv_args)*(1-gamma) \
+            - h*F.conv_transpose2d(R_norm, w_minus, **self.conv_args)*(1-gamma)
     
     @classmethod
     def from_module(cls, src):
@@ -110,7 +152,7 @@ class MaxPool(ReluLayer, nn.MaxPool2d):
     def __init__(self, *args, **kwargs):
         kwargs['return_indices'] = True
         super().__init__(*args, **kwargs)
-        self.unpool = nn.MaxUnpool2d(kernel_size=self.kernel_size, stride=self.stride)
+        self._unpool = nn.MaxUnpool2d(kernel_size=self.kernel_size, stride=self.stride)
         
     def forward(self, x):
         self.x = x
@@ -118,9 +160,14 @@ class MaxPool(ReluLayer, nn.MaxPool2d):
         self.z = F.relu(self.a)
         return self.z
     
-    def zplus(self, R, eps=1e-9):
-        # distribute relevance flat to all input fields
-        return self.unpool(R, self.indices, output_size=self.x.size())
+    def unpool(self, y):
+        return self._unpool(y, self.indices, output_size=self.x.size())
+    
+    def zplus(self, R, *args, **kwargs):
+        return self.unpool(R)
+    
+    def lrp_gamma(self, R, *args, **kwargs):
+        return self.unpool(R)
     
     @staticmethod
     def from_module(src):
@@ -166,27 +213,27 @@ class ExplainableModel(TrainableNet):
             print(f"({layer.__class__.__name__}) ->", x.shape)
         return x
     
-    def deeptaylor(self, x, pattern):
+    def debug_info(self, layer, R, R_total):
+        print(f"({layer.__class__.__name__}) ->", R.shape)
+        print(f"({layer.__class__.__name__})     Conservation quotient: {R.sum()/R_total}")
+        if R.min() < 0:
+            print(f"({layer.__class__.__name__})     encountered negative values")
+        print("")
+    
+    def deeptaylor(self, x, pattern, debug=False):
         """
         Deep Taylor Decomposition, where relevance is the outputlayer is predictions*pattern
         Pattern: eg one_hot(labels) if the heatmap for the correct class should be used
         """
-        def debug_info(layer, R):
-            print(f"({layer.__class__.__name__}) ->", R.shape)
-            print(f"({layer.__class__.__name__})     Conservation quotient: {R.sum()/R_total}")
-            if R.min() < 0:
-                print(f"({layer.__class__.__name__})     encountered negative values")
-            print("")
-            
         out = self.forward(x)
         R = F.relu(out*pattern)
         R_total = R.sum()
-        debug_info(self, R)
             
         for layer in self.layers[1:][::-1]:
             R = R.view(layer.z.shape)
             R = layer.zplus(R)
-            debug_info(layer, R)
+            if debug:
+                self.debug_info(layer, R, R_total)
             
         # Select the input layer rule
         if self.min_x is None and self.max_x is None:
@@ -195,8 +242,37 @@ class ExplainableModel(TrainableNet):
             R = self.layers[0].zplus(R)
         else:
             R = self.layers[0].zb(R, self.min_x, self.max_x)
-        debug_info(self.layers[0], R)
+            
+        if debug:    
+            self.debug_info(self.layers[0], R, R_total)
+            
         return R
+    
+    def lrp_gamma(self, x, pattern, gamma=0.1, bias_relevance=False, debug=False):
+        # Output layer relevance
+        out = self.forward(x)
+        R = out*pattern
+        R_total = R.sum()
+        
+        # Backward pass
+        for layer in self.layers[1:][::-1]:
+            R = R.view(layer.z.shape)
+            R = layer.lrp_gamma(R, gamma, bias_relevance=bias_relevance)
+            if debug:
+                self.debug_info(layer, R, R_total)
+            
+        # Input layer relevance depending on domain
+        if self.min_x is None and self.max_x is None:
+            R = self.layers[0].ww(R)
+        elif self.min_x == 0 and self.max_x is None:
+            R = self.layers[0].lrp_gamma(R, gamma)
+        else:
+            R = self.layers[0].zb_gamma(R, self.min_x, self.max_x, gamma=gamma)
+            
+        if debug:    
+            self.debug_info(self.layers[0], R, R_total)
+                
+        return R 
     
     @classmethod
     def from_model(cls, model, layer_names, *args, **kwargs):
@@ -230,7 +306,8 @@ class ExplainableModel(TrainableNet):
         
         # cast all layers
         # all but the last are casted to relu layers
-        layers = [casted_layer(model._modules[l]) for l in layer_names[:-1]] +                  [casted_layer(model._modules[layer_names[-1]], last_layer=True)]
+        layers = [casted_layer(model._modules[l]) for l in layer_names[:-1]] + \
+                 [casted_layer(model._modules[layer_names[-1]], last_layer=True)]
         
         # now create a ExplainBase object which we call self, and pretend to be a constructor
         self = cls(layers, *args, **kwargs)
@@ -240,29 +317,3 @@ class ExplainableModel(TrainableNet):
             self.__dict__[l] = layer
             
         return self
-
-
-
-class ExplainNet(ExplainableModel):
- """
- Rebuilt of cifar10utils.Net with deep taylor support
- """
- def __init__(self):
-     layers = [
-         ConvRelu(3, 6, 5),
-         MaxPool(2, 2),
-         ConvRelu(6, 16, 5),
-         MaxPool(2, 2),
-         LinearRelu(16 * 5 * 5, 120),
-         LinearRelu(120, 84),
-         LinearRelu(84, 10)
-     ]
-     super().__init__(layers, -1, 1)
-     
-     # Because pytorch is weird, the submodels cannot be stored in a list
-     self.l1 = layers[0]
-     self.l2 = layers[1]
-     self.l3 = layers[2]
-     self.l4 = layers[3]
-     self.l5 = layers[4]
-     self.l6 = layers[5]

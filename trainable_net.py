@@ -60,7 +60,7 @@ class TrainableNet(nn.Module):
                     class_correct[label] += c[i].item()
                     class_total[label] += 1
 
-        return {classes[i]: class_correct[i]/class_total[i] for i in range(10)}
+        return {self.classes[i]: class_correct[i]/class_total[i] for i in range(10)}
 
     def save(self, model_dir):
         torch.save(self.state_dict(), model_dir)
@@ -78,7 +78,7 @@ def input_times_gradient(net, images, target_pattern):
     img = torch.tensor(images, requires_grad=True)
     v = (net.forward(img)*target_pattern).sum()
     v.backward()
-    h = (img.data*img.grad).sum(1)
+    h = img.data*img.grad
     return h
 
 
