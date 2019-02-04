@@ -41,10 +41,11 @@ class LayerizedNet(TrainableNet):
             layer_names should look like this:
             ['conv1', 'pool', 'conv2', 'pool', 'fc1', 'fc2', 'fc3']
         layer_base_type: looks for layer classes that subclass this type to convert the model
+        last_layer_type: type of the last layer
+        *args, **kwargs: will be passed to the constructor of `cls`, i.e. LayerizedNet or a subclass
         
-        Relus don't have to be specified:
-            assumes that relus are used everywhere but in the last layer
-            assumes the last layer is linear
+        Nonlinearities don't have to be specified if they are implemented in layer_base_type.
+        Alternatively, they can be treated as extra layers.
         Reshaping does not have to be specified
         
         Relies on the fact that each ReluLayer is also subclass of the class of model
