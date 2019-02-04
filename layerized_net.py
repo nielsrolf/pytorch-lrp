@@ -46,9 +46,7 @@ class LayerizedNet(TrainableNet):
         
         Nonlinearities don't have to be specified if they are implemented in layer_base_type.
         Alternatively, they can be treated as extra layers.
-        Reshaping does not have to be specified
-        
-        Relies on the fact that each ReluLayer is also subclass of the class of model
+        Reshaping should be implemented by the layer's .forward()
         """
         def casted_layer(src):
             # finds the layer equivalent of src.__class__
